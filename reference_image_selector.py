@@ -543,42 +543,72 @@ def main():
     st.markdown("---")
     
     # ==========================================================================
-    # ADMIN SECTION - Download completed work
+    # ADMIN SECTION - Download & Delete
     # ==========================================================================
     
-    with st.expander("📥 Download Completed Selections"):
-        st.write("Download all completed selections as a ZIP file")
-        
-        if st.button("🗜️ Generate ZIP", key="btn_generate_zip"):
-            import zipfile
-            from io import BytesIO
+    col_admin1, col_admin2 = st.columns(2)
+    
+    with col_admin1:
+        with st.expander("📥 Download Completed Selections"):
+            st.write("Download all completed selections as a ZIP file")
             
-            if not OUTPUT_FOLDER.exists() or not any(OUTPUT_FOLDER.iterdir()):
-                st.warning("No selections saved yet!")
+            if st.button("🗜️ Generate ZIP", key="btn_generate_zip"):
+                import zipfile
+                from io import BytesIO
+                
+                if not OUTPUT_FOLDER.exists() or not any(OUTPUT_FOLDER.iterdir()):
+                    st.warning("No selections saved yet!")
+                else:
+                    # Create ZIP in memory
+                    zip_buffer = BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for product_folder in OUTPUT_FOLDER.iterdir():
+                            if product_folder.is_dir():
+                                for file in product_folder.iterdir():
+                                    if file.is_file():
+                                        arcname = f"{product_folder.name}/{file.name}"
+                                        zip_file.write(file, arcname)
+                    
+                    zip_buffer.seek(0)
+                    
+                    st.download_button(
+                        label="⬇️ Download selected_reference_images.zip",
+                        data=zip_buffer,
+                        file_name=f"selected_reference_images_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                        mime="application/zip",
+                        key="btn_download_zip"
+                    )
+                    
+                    # Show statistics
+                    completed_count = sum(1 for p in OUTPUT_FOLDER.iterdir() if p.is_dir() and (p / "selection.json").exists())
+                    st.success(f"✅ {completed_count} products completed and ready for download")
+    
+    with col_admin2:
+        with st.expander("🗑️ Delete Current Selection"):
+            st.write(f"**Product:** {product_name}")
+            
+            if is_product_completed(product_name):
+                selection_file = OUTPUT_FOLDER / product_name / "selection.json"
+                try:
+                    with open(selection_file, "r", encoding="utf-8") as f:
+                        existing_data = json.load(f)
+                    
+                    st.info(f"Selected by: {existing_data.get('selected_by', 'Unknown')}")
+                    st.info(f"Date: {existing_data.get('timestamp', 'Unknown')}")
+                    st.warning("⚠️ This will permanently delete all selected images and metadata for this product")
+                    
+                    if st.button("🗑️ Confirm Delete", key="btn_confirm_delete", type="secondary"):
+                        try:
+                            product_output_folder = OUTPUT_FOLDER / product_name
+                            shutil.rmtree(product_output_folder)
+                            st.success(f"✅ Deleted selection for {product_name}")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Failed to delete: {str(e)}")
+                except Exception:
+                    st.error("Unable to read selection metadata")
             else:
-                # Create ZIP in memory
-                zip_buffer = BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for product_folder in OUTPUT_FOLDER.iterdir():
-                        if product_folder.is_dir():
-                            for file in product_folder.iterdir():
-                                if file.is_file():
-                                    arcname = f"{product_folder.name}/{file.name}"
-                                    zip_file.write(file, arcname)
-                
-                zip_buffer.seek(0)
-                
-                st.download_button(
-                    label="⬇️ Download selected_reference_images.zip",
-                    data=zip_buffer,
-                    file_name=f"selected_reference_images_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                    mime="application/zip",
-                    key="btn_download_zip"
-                )
-                
-                # Show statistics
-                completed_count = sum(1 for p in OUTPUT_FOLDER.iterdir() if p.is_dir() and (p / "selection.json").exists())
-                st.success(f"✅ {completed_count} products completed and ready for download")
+                st.info("This product has not been completed yet")
     
     st.markdown("---")
     st.caption(f"Source: {SOURCE_FOLDER} | Output: {OUTPUT_FOLDER}")
